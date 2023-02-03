@@ -1,0 +1,3 @@
+[submodule "submodules/mohair-proto"]
+	path = submodules/mohair-proto
+	url = git@github.com:drin/mohair-protocol.git
