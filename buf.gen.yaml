@@ -1,0 +1,7 @@
+# A modified version of github.com/substrait-io/substrait/buf.gen.yaml for
+# this repo's directory structure
+
+version: v1
+plugins:
+  - remote: buf.build/protocolbuffers/plugins/python:v3.20.0-1
+    out: mohair_extension

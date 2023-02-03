@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "mohair-extension"
+version = "0.1.0"
+description = "A prototype to use ibis-substrait to compile a substrait extension"
+authors = ["Aldrin Montana <octalene.dev@pm.me>"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{include = "mohair_extension"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+ibis-substrait = "^2.19.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
