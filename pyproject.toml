@@ -10,6 +10,7 @@ packages = [{include = "mohair_extension"}]
 [tool.poetry.dependencies]
 python = "^3.11"
 ibis-substrait = "^2.19.0"
+pyarrow = "^11.0.0"
 
 
 [build-system]
