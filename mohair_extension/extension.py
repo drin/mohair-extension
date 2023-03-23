@@ -32,28 +32,53 @@ message type.
 # ------------------------------
 # Dependencies
 
+from typing import Any
+from dataclasses import dataclass
+
 # >> Ibis
-#    |> functions for translation
+
+#   |> modules
+# NOTE: `stalg` is (probably) short for "substrait algebra"
+from ibis.expr import types
+from ibis.expr.operations import relations
+from ibis_substrait.compiler.translate import stalg
+
+#   |> functions
 from ibis_substrait.compiler.translate import translate
 
-#    |> classes for translation (substrait)
-# NOTE: `stalg` is (probably) short for "substrait algebra"
-from ibis_substrait.compiler.translate import stalg
+#   |> classes
+from ibis_substrait.compiler.core import SubstraitCompiler
+from mohair_extension.mohair.algebra_pb2 import SkyRel, ExecutionStats
 
 # >> Internal
 from mohair_extension.relations import SkyPartition
 
-#   |> protobufs
-from mohair_extension.mohair.algebra_pb2 import SkyRel, ExecutionStats
 
+# ------------------------------
+# Classes
+
+class SkyTable(relations.PhysicalTable):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.skyrel = None
+
+    def SetPartition(self, sky_partition):
+        self.skyrel = sky_partition
+        return self
+
+    def name(self):
+        return f'{self.skyrel.domain.key}/{self.skyrel.meta.key}'
+
+    def schema(self):
+        return self.skyrel.meta.schema
 
 
 # ------------------------------
 # Functions
 
-@translate.register(SkyPartition)
-def _translate_mohair( op      : SkyPartition
-                      ,expr    : ir.TableExpr | None = None
+@translate.register(SkyTable)
+def _translate_mohair( op      : SkyTable
+                      ,expr    : types.TableExpr | None = None
                       ,*args   : Any
                       ,compiler: SubstraitCompiler | None = None
                       ,**kwargs: Any                            ) -> stalg.Rel:
@@ -62,9 +87,9 @@ def _translate_mohair( op      : SkyPartition
         extension_leaf=stalg.ExtensionLeafRel(
              common=stalg.RelCommon(direct=stalg.RelCommon.Direct())
             ,detail=SkyRel(
-                 domain=mohair_rel.domain.key
-                ,partition=mohair_rel.meta.key
-                ,slices=mohair_rel.slice_indices()
+                 domain=op.domain.key
+                ,partition=op.meta.key
+                ,slices=op.slice_indices()
                 ,execstats=ExecutionStats(executed=False)
              )
         )
