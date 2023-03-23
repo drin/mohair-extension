@@ -27,3 +27,9 @@ from ibis_substrait.proto.substrait.ibis
 ```
 
 This allowed the source dependencies to resolve correctly.
+
+
+# Sample Data
+
+Sample data can be found in `resources/sample-data.tsv`. This sample data is a **very
+small** excerpt from E-GEOD-100618.
