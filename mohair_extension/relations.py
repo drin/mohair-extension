@@ -36,7 +36,9 @@ from pyarrow import Schema, Table
 
 
 # ------------------------------
-# Relation types
+# Classes
+
+# >> Skytether types
 
 @dataclass
 class SkyDomain:
@@ -87,4 +89,3 @@ class SkyPartition:
             for partition_slice in slices
             if partition_slice is not None
         ]
-
