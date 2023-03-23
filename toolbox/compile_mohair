@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+
+# ------------------------------
+# License
+
+# Copyright 2023 Aldrin Montana
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#     http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ------------------------------
+# Overview
+"""
+Simple script that uses mohair_extension to translate a query plan into substrait.
+"""
+
+
+# ------------------------------
+# Dependencies
+
+from pathlib import Path
+
+import pyarrow
+from ibis_substrait.compiler.core import SubstraitCompiler
+
+from mohair_extension.relations import ( SkyDomain
+                                        ,SkyPartitionMeta
+                                        ,SkyPartitionSlice
+                                        ,SkyPartition
+                                       )
+from mohair_extension.extension import SkyTable
+from mohair_extension.extension import _translate_mohair
+
+
+# ------------------------------
+# Module variables
+
+ExprSchema = pyarrow.schema([
+     pyarrow.field('gene_id'   , pyarrow.string())
+    ,pyarrow.field('cell_id'   , pyarrow.string())
+    ,pyarrow.field('expression', pyarrow.float64())
+])
+
+
+# ------------------------------
+# Functions
+
+# >> Encoding/Decoding for schema and field metadata
+def EncodeMetaStr(meta_str: str) -> bytes:
+    return meta_str.encode('utf-8')
+
+def EncodeMetaInt(meta_int: int, width: int = 4) -> bytes:
+    return meta_int.to_bytes(length=width, byteorder='big')
+
+def DecodeMetaStr(meta_bytes: bytes) -> str:
+    return meta_bytes.decode('utf-8')
+
+def DecodeMetaInt(meta_bytes: bytes) -> int:
+    return int.from_bytes(meta_bytes, byteorder='big')
+
+
+# >> Convenience functions for schema and field metadata
+def PartitionCount(pcount: int):
+    return (
+         EncodeMetaStr('skyhook_partition_count')
+        ,EncodeMetaInt(pcount)
+    )
+
+def StripeWidth(swidth: int):
+    return (
+         EncodeMetaStr('skyhook_stripe_width')
+        ,EncodeMetaInt(swidth)
+    )
+
+
+# >> Convenience functions for use in tests
+def DefaultDomain():
+    ''' Creates the default domain 'public'. '''
+
+    return SkyDomain()
+
+def PartitionMetaForExpr():
+    ''' Creates a PartitionMeta for an expr table. '''
+
+    return SkyPartitionMeta(
+         key='E-GEOD-100618'
+        ,schema=ExprSchema
+        ,schema_meta=dict([PartitionCount(2), StripeWidth(1)])
+    )
+
+def PartitionSlicesForExpr(pkey: str, data_fpath: Path):
+    """
+	Parses :data_fpath: into data slices using hard-coded
+assumptions.
+    """
+
+    # read data from the given file; assume 3 columns (see `SAMPLE_SCHEMA`)
+    with data_fpath.open() as data_handle:
+        col_names   = next(data_handle).split(' ')
+        data_by_col = [ [] for _ in col_names ]
+
+        for line in data_handle:
+            fields = line.strip().split(' ')
+
+            data_by_col[0].append(fields[0])
+            data_by_col[1].append(fields[1])
+            data_by_col[2].append(float(fields[2]))
+
+    # construct the table and return it
+    tcol_arrays = [
+        pyarrow.array(data_by_col[col_ndx], type=col_info.type)
+        for col_ndx, col_info in enumerate(ExprSchema)
+    ]
+    tdata = pyarrow.Table.from_arrays(tcol_arrays, schema=ExprSchema)
+
+    # return a list of slices each wrapping a single recordbatch
+    return [
+        SkyPartitionSlice(
+             slice_index=sndx
+            ,key=f'{pkey};{sndx}'
+            ,data=pyarrow.Table.from_batches([tbatch])
+        )
+        for sndx, tbatch in enumerate(tdata.to_batches(max_chunksize=10))
+    ]
+
+def PartitionForExpr(example_fpath):
+    example_domain = DefaultDomain()
+    example_meta   = PartitionMetaForExpr()
+    example_data   = PartitionSlicesForExpr(
+        example_meta.key, example_fpath
+    )
+
+    example_tbl = SkyPartition(
+         domain=example_domain
+        ,meta=example_meta
+        ,slices=example_data
+    )
+
+    return example_tbl
+
+
+# ------------------------------
+# Main logic
+
+if __name__ == '__main__':
+    sample_fpath   = Path('resources') / 'sample-data.tsv'
+    test_partition = PartitionForExpr(sample_fpath)
+    test_rel       = SkyTable().SetPartition(test_partition)
+
+    substrait_compiler = SubstraitCompiler()
+    proto_msg = substrait_compiler.compile(test_partition['cell_id', 'expr'])
