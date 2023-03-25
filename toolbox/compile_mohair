@@ -27,18 +27,22 @@ Simple script that uses mohair_extension to translate a query plan into substrai
 # ------------------------------
 # Dependencies
 
+import pyarrow
+
+# >> Standard libs
 from pathlib import Path
 
-import pyarrow
+# >> Ibis-substrait
 from ibis_substrait.compiler.core import SubstraitCompiler
 
+# >> Internal
+from mohair_extension.extension import SkyTable
+from mohair_extension.extension import arrow_schema_to_ibis, _translate_mohair
 from mohair_extension.relations import ( SkyDomain
                                         ,SkyPartitionMeta
                                         ,SkyPartitionSlice
                                         ,SkyPartition
                                        )
-from mohair_extension.extension import SkyTable
-from mohair_extension.extension import _translate_mohair
 
 
 # ------------------------------
@@ -84,12 +88,12 @@ def StripeWidth(swidth: int):
 
 # >> Convenience functions for use in tests
 def DefaultDomain():
-    ''' Creates the default domain 'public'. '''
+    """ Creates the default domain 'public'. """
 
     return SkyDomain()
 
 def PartitionMetaForExpr():
-    ''' Creates a PartitionMeta for an expr table. '''
+    """ Creates a PartitionMeta for an expr table. """
 
     return SkyPartitionMeta(
          key='E-GEOD-100618'
@@ -99,8 +103,7 @@ def PartitionMetaForExpr():
 
 def PartitionSlicesForExpr(pkey: str, data_fpath: Path):
     """
-	Parses :data_fpath: into data slices using hard-coded
-assumptions.
+    Parses :data_fpath: into data slices using hard-coded assumptions.
     """
 
     # read data from the given file; assume 3 columns (see `SAMPLE_SCHEMA`)
@@ -153,8 +156,17 @@ def PartitionForExpr(example_fpath):
 
 if __name__ == '__main__':
     sample_fpath   = Path('resources') / 'sample-data.tsv'
+
     test_partition = PartitionForExpr(sample_fpath)
-    test_rel       = SkyTable().SetPartition(test_partition)
+    test_rel       = SkyTable(
+         schema=arrow_schema_to_ibis(test_partition.schema())
+        ,name=test_partition.name()
+        ,skyrel=test_partition
+    )
+
+    query_expr = test_rel.to_expr()['cell_id', 'expression']
 
     substrait_compiler = SubstraitCompiler()
-    proto_msg = substrait_compiler.compile(test_partition['cell_id', 'expr'])
+    proto_msg = substrait_compiler.compile(query_expr)
+
+    print(proto_msg)
