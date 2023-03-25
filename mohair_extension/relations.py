@@ -27,29 +27,22 @@ Code that defines basic relation types used by mohair.
 # ------------------------------
 # Dependencies
 
-# >> Standard modules
+# >> Standard libs
 from dataclasses import dataclass
 
-# >> Arrow modules
-#   |> classes
+# >> Arrow
 from pyarrow import Schema, Table
 
 
 # ------------------------------
 # Classes
 
-# >> Skytether types
-
 @dataclass
 class SkyDomain:
     key: str = 'public'
 
     def PartitionFor(self, partition_key: str) -> 'SkyPartition':
-        return SkyPartition(
-             self
-            ,SkyPartitionMeta(key=partition_key)
-            ,None
-        )
+        return SkyPartition(domain=self, meta=SkyPartitionMeta(key=partition_key))
 
 @dataclass
 class SkyPartitionMeta:
@@ -83,9 +76,18 @@ class SkyPartition:
     meta  : SkyPartitionMeta        = None
     slices: list[SkyPartitionSlice] = None
 
+    def __hash__(self):
+        return hash(self.domain.key) + hash(self.meta.key)
+
+    def name(self):
+        return f'{self.domain.key}/{self.meta.key}'
+
+    def schema(self):
+        return self.meta.schema
+
     def slice_indices(self) -> list[int]:
         return [
             partition_slice.slice_index
-            for partition_slice in slices
+            for partition_slice in self.slices
             if partition_slice is not None
         ]
