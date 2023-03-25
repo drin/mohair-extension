@@ -22,75 +22,89 @@
 """
 Code that uses the ibis approach to compile substrait using mohair extensions.
 
-In the naive case, we must compile to new message types such as `SkyRel`, which is a
-logical read relation that is used by a Skytether storage service. In a more complex case,
-we must prioritize compiling to a new or modified message type instead of a core substrait
-message type.
+Currently, the naive case is supported where we can compile to new message types such as
+`SkyRel`--a logical read relation that is used by a Skytether storage service.
+
+A more complex case is not yet supported, which would be to prioritize compiling to a new
+or modified message type instead of a core substrait message type.
 """
 
 
 # ------------------------------
 # Dependencies
 
-from typing import Any
+# >> Standard libs
+import typing
 from dataclasses import dataclass
 
 # >> Ibis
+from ibis.expr             import types, rules, schema as sch
+from ibis.expr.operations  import relations
+from ibis.backends.pyarrow import datatypes
 
-#   |> modules
-# NOTE: `stalg` is (probably) short for "substrait algebra"
-from ibis.expr import types
-from ibis.expr.operations import relations
+# >> Ibis-substrait
 from ibis_substrait.compiler.translate import stalg
-
-#   |> functions
 from ibis_substrait.compiler.translate import translate
+from ibis_substrait.compiler.core      import SubstraitCompiler
 
-#   |> classes
-from ibis_substrait.compiler.core import SubstraitCompiler
-from mohair_extension.mohair.algebra_pb2 import SkyRel, ExecutionStats
+# >> Google
+from google.protobuf import any_pb2
 
 # >> Internal
-from mohair_extension.relations import SkyPartition
+from mohair_extension.relations          import SkyPartition
+from mohair_extension.mohair.algebra_pb2 import SkyRel, ExecutionStats
 
 
 # ------------------------------
 # Classes
 
-class SkyTable(relations.PhysicalTable):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.skyrel = None
+# NOTE: deriving from PhysicalTable gives a clean base
+# class SkyTable(relations.PhysicalTable):
+#     skyrel = rules.instance_of(SkyPartition)
+# 
+#     # NOTE: these properties/attributes are necessary to use `to_expr()` and interact with
+#     # it as any other ibis table
+#     @property
+#     def name(self):
+#         return self.skyrel.name()
+# 
+#     @property
+#     def schema(self):
+#         return datatypes.from_pyarrow_schema(self.skyrel.schema())
 
-    def SetPartition(self, sky_partition):
-        self.skyrel = sky_partition
-        return self
-
-    def name(self):
-        return f'{self.skyrel.domain.key}/{self.skyrel.meta.key}'
-
-    def schema(self):
-        return self.skyrel.meta.schema
+# NOTE: we extend from UnboundTable since schema and name are so useful anyways
+class SkyTable(relations.UnboundTable):
+    skyrel = rules.instance_of(SkyPartition)
 
 
 # ------------------------------
 # Functions
 
+# this requires ibis 5.0+
+def arrow_schema_to_ibis(arrow_schema):
+    return datatypes.from_pyarrow_schema(arrow_schema)
+
 @translate.register(SkyTable)
 def _translate_mohair( op      : SkyTable
                       ,expr    : types.TableExpr | None = None
-                      ,*args   : Any
+                      ,*args   : typing.Any
                       ,compiler: SubstraitCompiler | None = None
-                      ,**kwargs: Any                            ) -> stalg.Rel:
+                      ,**kwargs: typing.Any                     ) -> stalg.Rel:
 
-    return stalg.Rel(
+    substrait_rel = stalg.Rel(
         extension_leaf=stalg.ExtensionLeafRel(
              common=stalg.RelCommon(direct=stalg.RelCommon.Direct())
-            ,detail=SkyRel(
-                 domain=op.domain.key
-                ,partition=op.meta.key
-                ,slices=op.slice_indices()
-                ,execstats=ExecutionStats(executed=False)
-             )
         )
     )
+
+    # NOTE: apparently messages have to be packed into an `any_pb2.Any`
+    substrait_rel.extension_leaf.detail.Pack(
+        SkyRel(
+            domain=op.skyrel.domain.key
+           ,partition=op.skyrel.meta.key
+           ,slices=op.skyrel.slice_indices()
+           ,execstats=ExecutionStats(executed=False)
+        )
+    )
+
+    return substrait_rel
