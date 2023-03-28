@@ -1,6 +1,8 @@
 # Overview
 
-A prototype of using ibis-substrait to compile against a substrait extension
+A prototype of using ibis-substrait to compile against a substrait extension.
+
+This repo is an example that addresses the feature request/issue: [ibis-substrait#498][issue-498].
 
 
 # Code
@@ -62,3 +64,7 @@ into a single example.
 
 Sample data can be found in `resources/sample-data.tsv`. This sample data is a **very
 small** excerpt from E-GEOD-100618.
+
+
+<!-- Resources -->
+[issue-498]: https://github.com/ibis-project/ibis-substrait/issues/498
