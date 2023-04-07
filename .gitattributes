@@ -1,3 +1,4 @@
 resources/average-expression.substrait.txt filter=lfs diff=lfs merge=lfs -text
 resources/sample-data.tsv filter=lfs diff=lfs merge=lfs -text
 resources/average-expression.substrait filter=lfs diff=lfs merge=lfs -text
+resources/projection.mohair.txt filter=lfs diff=lfs merge=lfs -text
